@@ -8,6 +8,8 @@
 #include "hardware/adc.h"
 
 #include "joystick/joystick.h"
+#include "buttons/buttons.h"
+#include "led_rgb/led_rgb.h"
 
 // Definições para ADC
 #define ADC_MAX 4095
@@ -32,11 +34,17 @@ enum {
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
 
+#define TOTAL_FUNCTIONS 2
+// 0: Mouse
+// 1: Teclado
+uint hid_function = 0;
+
 int main(void) {
   board_init();
 
-  // Inicializa o ADC
   setup_joystick();
+  setup_buttons();
+  setup_led_RGB();
 
   // Inicializa a pilha USB
   tud_init(BOARD_TUD_RHPORT);
@@ -79,9 +87,72 @@ void send_hid_mouse_report() {
   int8_t delta_x = adc_to_mouse_movement(adc_value_x);
   int8_t delta_y = adc_to_mouse_movement(adc_value_y);
 
+  // Lê os botões (nível baixo = pressionado)
+  uint8_t buttons = 0;
+  if(!gpio_get(BUTTON_A)) {
+    buttons |= MOUSE_BUTTON_LEFT;
+  }
+  if(!gpio_get(BUTTON_B)) {
+    buttons |= MOUSE_BUTTON_RIGHT;
+  }
+
   // Envia o relatório do mouse
-  tud_hid_mouse_report(REPORT_ID_MOUSE, 0x00, delta_x, -delta_y, 0, 0);
+  tud_hid_mouse_report(REPORT_ID_MOUSE, buttons, delta_x, -delta_y, 0, 0);
 }
+
+uint8_t keyboard_character = HID_KEY_A;
+
+// Intervalo de envio
+#define HID_INTERVAL_MS 100
+
+void hid_keyboard_task(void) {
+
+  // Buffer de teclas pressionadas
+  uint8_t keycode[6] = {0};
+  uint8_t key_count = 0;
+
+  bool value_A = gpio_get(BUTTON_A);
+  bool value_B = gpio_get(BUTTON_B);
+
+  // Se nenhum dos dois foi pressionado
+  if(value_A && value_B) {
+    // Mantêm tudo como está
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, 0);
+    set_red(!gpio_get(LED_RED));
+  } else {
+    // Verifica os botões
+    if (!value_A) {
+      keyboard_character--;
+    }
+    
+    if (!value_B) {
+      keyboard_character++;
+    }
+
+    // keycode[key_count++] = HID_KEY_BACKSPACE;
+    // keycode[key_count++] = keyboard_character;
+
+    // Envia Backspace
+    keycode[0] = HID_KEY_BACKSPACE;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+    sleep_ms(50);
+
+    // Libera as teclas (necessário para evitar teclas presas)
+    keycode[0] = 0;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+    sleep_ms(50);
+
+    keycode[0] = keyboard_character;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+    sleep_ms(50);
+
+    // Libera as teclas (necessário para evitar teclas presas)
+    keycode[0] = 0;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  }
+  sleep_ms(500);
+}
+
 
 // Tarefa para envio periódico dos relatórios HID
 void hid_task(void) {
@@ -91,7 +162,22 @@ void hid_task(void) {
   if (board_millis() - start_ms < interval_ms) return;
   start_ms += interval_ms;
 
-  send_hid_mouse_report();
+  uint32_t const btn = board_button_read();
+  if(btn) {
+    hid_function = ++hid_function % TOTAL_FUNCTIONS;
+  }
+
+  switch (hid_function)
+  {
+  case 0:
+    send_hid_mouse_report();
+    break;
+  case 1:
+    hid_keyboard_task();
+    break;
+  default:
+    break;
+  }
 }
 
 // Tarefa para piscar o LED
