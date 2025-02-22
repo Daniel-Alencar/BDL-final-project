@@ -45,13 +45,10 @@ uint hid_function = 0;
 uint last_hid_function = 0;
 
 
-
-uint keyboard_character = HID_KEY_A;
-const char keyboard_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-// Índice do caractere atual
-uint keyboard_index = 0;
 // Armazena o tempo do último evento (em microssegundos)
 static volatile uint32_t last_time = 0;
+
+uint keyboard_character = HID_KEY_A;
 uint8_t keycode[6] = {0};
 
 uint8_t buttons = 0;
@@ -70,6 +67,10 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     // Atualiza o tempo do último evento
     last_time = current_time;
 
+    if (gpio == JOYSTICK_BUTTON) {
+      hid_function = hid_function + 1 == TOTAL_FUNCTIONS ? 0 : hid_function + 1;
+    }
+
     if(hid_function == 0) {
 
       if(gpio == BUTTON_A) {
@@ -81,18 +82,17 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     } else if(hid_function == 1) {
 
       if(gpio == BUTTON_A) {
-        print_hid_function(keyboard_index, "caractere");
-        keyboard_index--; 
-        if (keyboard_index < 0) keyboard_index = sizeof(keyboard_chars) - 1;
+        keyboard_character--;
       } else if (gpio == BUTTON_B) {
-        print_hid_function(keyboard_index, "caractere");
-        keyboard_index++;
-        if (keyboard_index >= sizeof(keyboard_chars)) keyboard_index = 0;
+        keyboard_character++;
       }
-    }
 
-    if (gpio == JOYSTICK_BUTTON) {
-      hid_function = hid_function + 1 == TOTAL_FUNCTIONS ? 0 : hid_function + 1;
+      // Buffer de teclas pressionadas
+      uint8_t keycode[6] = {0};
+      uint8_t keycode_count = 0;
+
+      keycode[keycode_count++] = keyboard_character;
+      tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
     }
   }
 }
@@ -162,7 +162,9 @@ void send_hid_mouse_report() {
   buttons = 0;
 }
 
+
 void hid_keyboard_task(void) {
+
   if (!tud_hid_ready()) return;
 }
 
