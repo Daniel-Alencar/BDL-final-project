@@ -50,13 +50,11 @@ uint keyboard_character = HID_KEY_A;
 const char keyboard_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 // Índice do caractere atual
 uint keyboard_index = 0;
-bool value_A = true;
-bool value_B = true;
-bool value_Select = true;
 // Armazena o tempo do último evento (em microssegundos)
 static volatile uint32_t last_time = 0;
 uint8_t keycode[6] = {0};
-bool selected = false;
+
+uint8_t buttons = 0;
 
 
 
@@ -72,7 +70,15 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     // Atualiza o tempo do último evento
     last_time = current_time;
 
-    if(hid_function == 1) {
+    if(hid_function == 0) {
+
+      if(gpio == BUTTON_A) {
+        buttons |= MOUSE_BUTTON_RIGHT; 
+      } else if (gpio == BUTTON_B) {
+        buttons |= MOUSE_BUTTON_LEFT;
+      }
+
+    } else if(hid_function == 1) {
 
       if(gpio == BUTTON_A) {
         print_hid_function(keyboard_index, "caractere");
@@ -82,9 +88,11 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
         print_hid_function(keyboard_index, "caractere");
         keyboard_index++;
         if (keyboard_index >= sizeof(keyboard_chars)) keyboard_index = 0;
-      } else if (gpio == JOYSTICK_BUTTON) {
-        
       }
+    }
+
+    if (gpio == JOYSTICK_BUTTON) {
+      hid_function = hid_function + 1 == TOTAL_FUNCTIONS ? 0 : hid_function + 1;
     }
   }
 }
@@ -106,7 +114,9 @@ int main(void) {
   print_hid_function(hid_function, "MODO MOUSE");
   gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
   gpio_set_irq_enabled_with_callback(BUTTON_B, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
-  gpio_set_irq_enabled_with_callback(JOYSTICK_BUTTON, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+  gpio_set_irq_enabled_with_callback(
+    JOYSTICK_BUTTON, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler
+  );
 
   while (1) {
     // Tarefa do TinyUSB
@@ -147,17 +157,9 @@ void send_hid_mouse_report() {
   int8_t delta_x = adc_to_mouse_movement(adc_value_x);
   int8_t delta_y = adc_to_mouse_movement(adc_value_y);
 
-  // Lê os botões (nível baixo = pressionado)
-  uint8_t buttons = 0;
-  if(!gpio_get(BUTTON_A)) {
-    buttons |= MOUSE_BUTTON_LEFT;
-  }
-  if(!gpio_get(BUTTON_B)) {
-    buttons |= MOUSE_BUTTON_RIGHT;
-  }
-
   // Envia o relatório do mouse
   tud_hid_mouse_report(REPORT_ID_MOUSE, buttons, delta_x, -delta_y, 0, 0);
+  buttons = 0;
 }
 
 void hid_keyboard_task(void) {
@@ -174,26 +176,34 @@ void hid_task(void) {
 
   uint32_t const btn = board_button_read();
   if(btn) {
-    hid_function = hid_function + 1 == TOTAL_FUNCTIONS ? 0 : hid_function + 1;
+    // Obtém o tempo atual em microssegundos
+    uint32_t current_time = to_us_since_boot(get_absolute_time());
+    // Verifica se passou tempo suficiente desde o último evento
+    // 200 ms de debouncing
+    if (current_time - last_time > 200000) {
+      // Atualiza o tempo do último evento
+      last_time = current_time;
+      hid_function = hid_function + 1 == TOTAL_FUNCTIONS ? 0 : hid_function + 1;
+    }
   }
 
   switch (hid_function) {
-  case 0:
-    if(last_hid_function != hid_function) {
-      print_hid_function(hid_function, "MODO MOUSE");
-      last_hid_function = hid_function;
-    }
-    send_hid_mouse_report();
-    break;
-  case 1:
-    if(last_hid_function != hid_function) {
-      print_hid_function(hid_function, "MODO TECLADO");
-      last_hid_function = hid_function;
-    }
-    hid_keyboard_task();
-    break;
-  default:
-    break;
+    case 0:
+      if(last_hid_function != hid_function) {
+        print_hid_function(hid_function, "MODO MOUSE");
+        last_hid_function = hid_function;
+      }
+      send_hid_mouse_report();
+      break;
+    case 1:
+      if(last_hid_function != hid_function) {
+        print_hid_function(hid_function, "MODO TECLADO");
+        last_hid_function = hid_function;
+      }
+      hid_keyboard_task();
+      break;
+    default:
+      break;
   }
 }
 
