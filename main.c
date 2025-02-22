@@ -10,6 +10,10 @@
 #include "joystick/joystick.h"
 #include "buttons/buttons.h"
 #include "led_rgb/led_rgb.h"
+#include "display/ssd1306.c"
+
+// Intervalo de envio
+#define HID_INTERVAL_MS 100
 
 // Definições para ADC
 #define ADC_MAX 4095
@@ -38,6 +42,55 @@ static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 // 0: Mouse
 // 1: Teclado
 uint hid_function = 0;
+uint last_hid_function = 0;
+
+
+
+uint keyboard_character = HID_KEY_A;
+const char keyboard_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+// Índice do caractere atual
+uint keyboard_index = 0;
+bool value_A = true;
+bool value_B = true;
+bool value_Select = true;
+// Armazena o tempo do último evento (em microssegundos)
+static volatile uint32_t last_time = 0;
+uint8_t keycode[6] = {0};
+bool selected = false;
+
+
+
+
+
+void gpio_irq_handler(uint gpio, uint32_t events) {
+  // Obtém o tempo atual em microssegundos
+  uint32_t current_time = to_us_since_boot(get_absolute_time());
+
+  // Verifica se passou tempo suficiente desde o último evento
+  // 200 ms de debouncing
+  if (current_time - last_time > 200000) {
+    // Atualiza o tempo do último evento
+    last_time = current_time;
+
+    if(hid_function == 1) {
+
+      if(gpio == BUTTON_A) {
+        print_hid_function(keyboard_index, "caractere");
+        keyboard_index--; 
+        if (keyboard_index < 0) keyboard_index = sizeof(keyboard_chars) - 1;
+      } else if (gpio == BUTTON_B) {
+        print_hid_function(keyboard_index, "caractere");
+        keyboard_index++;
+        if (keyboard_index >= sizeof(keyboard_chars)) keyboard_index = 0;
+      } else if (gpio == JOYSTICK_BUTTON) {
+        
+      }
+    }
+  }
+}
+
+
+
 
 int main(void) {
   board_init();
@@ -45,9 +98,15 @@ int main(void) {
   setup_joystick();
   setup_buttons();
   setup_led_RGB();
+  setup_display_oled();
 
   // Inicializa a pilha USB
   tud_init(BOARD_TUD_RHPORT);
+
+  print_hid_function(hid_function, "MODO MOUSE");
+  gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
+  gpio_set_irq_enabled_with_callback(BUTTON_B, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
+  gpio_set_irq_enabled_with_callback(JOYSTICK_BUTTON, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
 
   while (1) {
     // Tarefa do TinyUSB
@@ -77,6 +136,7 @@ int8_t adc_to_mouse_movement(uint16_t adc_value) {
 
 // Envia um relatório HID de movimento do mouse baseado no ADC
 void send_hid_mouse_report() {
+
   if (!tud_hid_ready()) return;
 
   // Lê o ADC
@@ -100,59 +160,9 @@ void send_hid_mouse_report() {
   tud_hid_mouse_report(REPORT_ID_MOUSE, buttons, delta_x, -delta_y, 0, 0);
 }
 
-uint8_t keyboard_character = HID_KEY_A;
-
-// Intervalo de envio
-#define HID_INTERVAL_MS 100
-
 void hid_keyboard_task(void) {
-
-  // Buffer de teclas pressionadas
-  uint8_t keycode[6] = {0};
-  uint8_t key_count = 0;
-
-  bool value_A = gpio_get(BUTTON_A);
-  bool value_B = gpio_get(BUTTON_B);
-
-  // Se nenhum dos dois foi pressionado
-  if(value_A && value_B) {
-    // Mantêm tudo como está
-    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, 0);
-    set_red(!gpio_get(LED_RED));
-  } else {
-    // Verifica os botões
-    if (!value_A) {
-      keyboard_character--;
-    }
-    
-    if (!value_B) {
-      keyboard_character++;
-    }
-
-    // keycode[key_count++] = HID_KEY_BACKSPACE;
-    // keycode[key_count++] = keyboard_character;
-
-    // Envia Backspace
-    keycode[0] = HID_KEY_BACKSPACE;
-    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
-    sleep_ms(50);
-
-    // Libera as teclas (necessário para evitar teclas presas)
-    keycode[0] = 0;
-    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
-    sleep_ms(50);
-
-    keycode[0] = keyboard_character;
-    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
-    sleep_ms(50);
-
-    // Libera as teclas (necessário para evitar teclas presas)
-    keycode[0] = 0;
-    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
-  }
-  sleep_ms(500);
+  if (!tud_hid_ready()) return;
 }
-
 
 // Tarefa para envio periódico dos relatórios HID
 void hid_task(void) {
@@ -164,15 +174,22 @@ void hid_task(void) {
 
   uint32_t const btn = board_button_read();
   if(btn) {
-    hid_function = ++hid_function % TOTAL_FUNCTIONS;
+    hid_function = hid_function + 1 == TOTAL_FUNCTIONS ? 0 : hid_function + 1;
   }
 
-  switch (hid_function)
-  {
+  switch (hid_function) {
   case 0:
+    if(last_hid_function != hid_function) {
+      print_hid_function(hid_function, "MODO MOUSE");
+      last_hid_function = hid_function;
+    }
     send_hid_mouse_report();
     break;
   case 1:
+    if(last_hid_function != hid_function) {
+      print_hid_function(hid_function, "MODO TECLADO");
+      last_hid_function = hid_function;
+    }
     hid_keyboard_task();
     break;
   default:
