@@ -67,7 +67,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
 
   // Verifica se passou tempo suficiente desde o último evento
   // 200 ms de debouncing
-  if (current_time - last_time > 200000) {
+  if (current_time - last_time > 500000) {
     // Atualiza o tempo do último evento
     last_time = current_time;
 
