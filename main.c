@@ -187,6 +187,14 @@ void hid_keyboard_task(void) {
   // Verifica se o HID está pronto
   if (!tud_hid_ready()) return;
 
+  // Lê o ADC
+  uint16_t adc_value_y = read_Y();
+  if(adc_value_y > ADC_CENTER + ADC_CENTER / 2) {
+    uint8_t keycode[6] = {0};
+    keycode[0] = HID_KEY_BACKSPACE;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  }
+
   tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
   for(int i = 0; i < 6; i++) {
     keycode[i] = 0;
