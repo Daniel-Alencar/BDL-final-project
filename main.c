@@ -211,6 +211,31 @@ void hid_control_task(void) {
   // Verifica se o HID está pronto
   if (!tud_hid_ready()) return;
 
+  // Lê o ADC
+  uint16_t adc_value_y = read_Y();
+  uint16_t adc_value_x = read_X();
+
+  if(adc_value_y > ADC_CENTER + ADC_CENTER / 2) {
+    uint8_t keycode[6] = {0};
+    keycode[0] = HID_KEY_ARROW_UP;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  }
+  if(adc_value_y < ADC_CENTER - ADC_CENTER / 2) {
+    uint8_t keycode[6] = {0};
+    keycode[0] = HID_KEY_ARROW_DOWN;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  }
+  if(adc_value_x > ADC_CENTER + ADC_CENTER / 2) {
+    uint8_t keycode[6] = {0};
+    keycode[0] = HID_KEY_ARROW_RIGHT;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  }
+  if(adc_value_x < ADC_CENTER - ADC_CENTER / 2) {
+    uint8_t keycode[6] = {0};
+    keycode[0] = HID_KEY_ARROW_LEFT;
+    tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  }
+
   tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
   for(int i = 0; i < 6; i++) {
     keycode[i] = 0;
