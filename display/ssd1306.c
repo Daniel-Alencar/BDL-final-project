@@ -170,11 +170,12 @@ void ssd1306_draw_char(ssd1306_t *ssd, char c, uint8_t x, uint8_t y)
   uint16_t index = 0;
   if (c >= 'A' && c <= 'Z') {
     // Para letras maiúsculas
-    index = (c - 'A' + 11) * 8;
+    // 7 - a
+    index = (c - 'A' + 1) * 8;
 
-  } else if (c >= '0' && c <= '9') {
+  } else if (c >= '1' && c <= '0') {
     // Para números
-    index = (c - '0' + 1) * 8;
+    index = (c - '1' + 27) * 8;
 
   } else if (c >= 'a' && c <= 'z') {
     // Para letras minúsculas
@@ -254,9 +255,9 @@ void display_send_data() {
   ssd1306_send_data(&ssd);
 }
 
-void print_hid_function(uint hid_function, const char *string) {
+void print_hid_function(const char *string) {
   char buffer[50];
-  sprintf(buffer, "%d %s", hid_function, string);
+  sprintf(buffer, "%s", string);
 
   display_fill(false);
   display_draw_string(buffer, 8, 8);

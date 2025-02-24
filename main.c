@@ -38,23 +38,27 @@ enum {
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
 
-#define TOTAL_FUNCTIONS 2
+#define TOTAL_FUNCTIONS 3
 // 0: Mouse
 // 1: Teclado
+// 3: Controle
 uint hid_function = 0;
 uint last_hid_function = 0;
-
 
 // Armazena o tempo do último evento (em microssegundos)
 static volatile uint32_t last_time = 0;
 
-uint keyboard_character = HID_KEY_A;
+uint8_t mouse_actions = 0;
+
+uint keyboard_character = HID_KEY_A - 1;
 uint8_t keycode[6] = {0};
-
-uint8_t buttons = 0;
-
+uint8_t keycode_count = 0;
 
 
+char convertHIDKeyToASCII(uint HID_key) {
+  if(HID_key >= HID_KEY_A && HID_key <= HID_KEY_Z)
+    return HID_key + 'A' - HID_KEY_A;
+}
 
 
 void gpio_irq_handler(uint gpio, uint32_t events) {
@@ -74,25 +78,36 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     if(hid_function == 0) {
 
       if(gpio == BUTTON_A) {
-        buttons |= MOUSE_BUTTON_RIGHT; 
+        mouse_actions |= MOUSE_BUTTON_RIGHT; 
       } else if (gpio == BUTTON_B) {
-        buttons |= MOUSE_BUTTON_LEFT;
+        mouse_actions |= MOUSE_BUTTON_LEFT;
       }
 
     } else if(hid_function == 1) {
 
       if(gpio == BUTTON_A) {
-        keyboard_character--;
+        if(keyboard_character > HID_KEY_A); {
+          keyboard_character--;
+          keycode[0] = keyboard_character;
+        }
       } else if (gpio == BUTTON_B) {
-        keyboard_character++;
+        if(keyboard_character < HID_KEY_Z) {
+          keyboard_character++;
+          keycode[0] = keyboard_character;
+        }
       }
+      char character_message[50];
+      sprintf(character_message, "CARACTERE %c", convertHIDKeyToASCII(keyboard_character));
+      display_draw_string(character_message, 8, 22);
+      display_send_data();
 
-      // Buffer de teclas pressionadas
-      uint8_t keycode[6] = {0};
-      uint8_t keycode_count = 0;
+    } else if(hid_function == 2) {
 
-      keycode[keycode_count++] = keyboard_character;
-      tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+      if(gpio == BUTTON_A) {
+        keycode[keycode_count++] = HID_KEY_ENTER;
+      } else if (gpio == BUTTON_B) {
+        keycode[keycode_count++] = HID_KEY_SPACE;
+      }
     }
   }
 }
@@ -111,12 +126,12 @@ int main(void) {
   // Inicializa a pilha USB
   tud_init(BOARD_TUD_RHPORT);
 
-  print_hid_function(hid_function, "MODO MOUSE");
   gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
   gpio_set_irq_enabled_with_callback(BUTTON_B, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
   gpio_set_irq_enabled_with_callback(
     JOYSTICK_BUTTON, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler
   );
+  print_hid_function("MOUSE");
 
   while (1) {
     // Tarefa do TinyUSB
@@ -145,7 +160,7 @@ int8_t adc_to_mouse_movement(uint16_t adc_value) {
 }
 
 // Envia um relatório HID de movimento do mouse baseado no ADC
-void send_hid_mouse_report() {
+void hid_mouse_task() {
 
   if (!tud_hid_ready()) return;
 
@@ -158,15 +173,43 @@ void send_hid_mouse_report() {
   int8_t delta_y = adc_to_mouse_movement(adc_value_y);
 
   // Envia o relatório do mouse
-  tud_hid_mouse_report(REPORT_ID_MOUSE, buttons, delta_x, -delta_y, 0, 0);
-  buttons = 0;
+  tud_hid_mouse_report(REPORT_ID_MOUSE, mouse_actions, delta_x, -delta_y, 0, 0);
+  mouse_actions = 0;
 }
 
 
 void hid_keyboard_task(void) {
 
+  static uint32_t start_ms = 0;
+  if (board_millis() - start_ms < HID_INTERVAL_MS) return;
+  start_ms = board_millis();
+
+  // Verifica se o HID está pronto
   if (!tud_hid_ready()) return;
+
+  tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  for(int i = 0; i < 6; i++) {
+    keycode[i] = 0;
+  }
+  keycode_count = 0;
 }
+
+void hid_control_task(void) {
+
+  static uint32_t start_ms = 0;
+  if (board_millis() - start_ms < HID_INTERVAL_MS) return;
+  start_ms = board_millis();
+
+  // Verifica se o HID está pronto
+  if (!tud_hid_ready()) return;
+
+  tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+  for(int i = 0; i < 6; i++) {
+    keycode[i] = 0;
+  }
+  keycode_count = 0;
+}
+
 
 // Tarefa para envio periódico dos relatórios HID
 void hid_task(void) {
@@ -192,17 +235,24 @@ void hid_task(void) {
   switch (hid_function) {
     case 0:
       if(last_hid_function != hid_function) {
-        print_hid_function(hid_function, "MODO MOUSE");
+        print_hid_function("MOUSE");
         last_hid_function = hid_function;
       }
-      send_hid_mouse_report();
+      hid_mouse_task();
       break;
     case 1:
       if(last_hid_function != hid_function) {
-        print_hid_function(hid_function, "MODO TECLADO");
+        print_hid_function("TECLADO");
         last_hid_function = hid_function;
       }
       hid_keyboard_task();
+      break;      
+    case 2:
+      if(last_hid_function != hid_function) {
+        print_hid_function("CONTROLE");
+        last_hid_function = hid_function;
+      }
+      hid_control_task();
       break;
     default:
       break;
