@@ -16,12 +16,12 @@
 
 // Definições para ADC
 #define ADC_MAX 4095
+// Valor central do ADC
+#define ADC_CENTER (ADC_MAX / 2)
 
 // Configuração de escala para movimento do cursor
 // Velocidade máxima do mouse
 #define MOUSE_MAX_SPEED 10
-// Valor central do ADC
-#define ADC_CENTER (ADC_MAX / 2)
 
 // Protótipos das funções
 void led_blinking_task(void);
@@ -36,7 +36,7 @@ enum {
 
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
-
+// Quantidade de funções que o dispositivo tem
 #define TOTAL_FUNCTIONS 3
 // 0: Mouse
 // 1: Teclado
@@ -54,10 +54,6 @@ uint8_t keycode[6] = {0};
 uint8_t keycode_count = 0;
 
 
-char convertHIDKeyToASCII(uint HID_key) {
-  if(HID_key >= HID_KEY_A && HID_key <= HID_KEY_Z)
-    return HID_key + 'A' - HID_KEY_A;
-}
 
 
 void gpio_irq_handler(uint gpio, uint32_t events) {
@@ -117,6 +113,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
 int main(void) {
   board_init();
 
+  // Inicializa os periféricos
   setup_joystick();
   setup_buttons();
   setup_display_oled();
@@ -124,11 +121,13 @@ int main(void) {
   // Inicializa a pilha USB
   tud_init(BOARD_TUD_RHPORT);
 
+  // Configura as interrupções
   gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
   gpio_set_irq_enabled_with_callback(BUTTON_B, GPIO_IRQ_LEVEL_LOW, true, &gpio_irq_handler);
   gpio_set_irq_enabled_with_callback(
     JOYSTICK_BUTTON, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler
   );
+
   print_hid_function("MOUSE");
 
   while (1) {
@@ -140,6 +139,7 @@ int main(void) {
   }
 }
 
+
 // Callbacks de status USB
 void tud_mount_cb(void) { blink_interval_ms = BLINK_MOUNTED; }
 void tud_umount_cb(void) { blink_interval_ms = BLINK_NOT_MOUNTED; }
@@ -149,6 +149,12 @@ void tud_suspend_cb(bool remote_wakeup_en) {
 }
 void tud_resume_cb(void) { 
   blink_interval_ms = tud_mounted() ? BLINK_MOUNTED : BLINK_NOT_MOUNTED; 
+}
+
+// Função de conversão do caractere HID para correspondente ASCII
+char convertHIDKeyToASCII(uint HID_key) {
+  if(HID_key >= HID_KEY_A && HID_key <= HID_KEY_Z)
+    return HID_key + 'A' - HID_KEY_A;
 }
 
 // Função para mapear valores do ADC para deslocamento do cursor
@@ -326,6 +332,5 @@ uint16_t tud_hid_get_report_cb(
   (void)buffer;
   (void)reqlen;
 
-  // Sem processamento por enquanto
   return 0; 
 }
