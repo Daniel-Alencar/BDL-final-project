@@ -9,7 +9,6 @@
 
 #include "joystick/joystick.h"
 #include "buttons/buttons.h"
-#include "led_rgb/led_rgb.h"
 #include "display/ssd1306.c"
 
 // Intervalo de envio
@@ -120,7 +119,6 @@ int main(void) {
 
   setup_joystick();
   setup_buttons();
-  setup_led_RGB();
   setup_display_oled();
 
   // Inicializa a pilha USB
