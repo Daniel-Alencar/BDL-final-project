@@ -55,6 +55,13 @@ uint8_t keycode_count = 0;
 
 
 
+// Função de conversão do caractere HID para correspondente ASCII
+char convertHIDKeyToASCII(uint HID_key) {
+  if(HID_key >= HID_KEY_A && HID_key <= HID_KEY_Z)
+    return HID_key + 'A' - HID_KEY_A;
+}
+
+
 
 void gpio_irq_handler(uint gpio, uint32_t events) {
   // Obtém o tempo atual em microssegundos
@@ -151,11 +158,7 @@ void tud_resume_cb(void) {
   blink_interval_ms = tud_mounted() ? BLINK_MOUNTED : BLINK_NOT_MOUNTED; 
 }
 
-// Função de conversão do caractere HID para correspondente ASCII
-char convertHIDKeyToASCII(uint HID_key) {
-  if(HID_key >= HID_KEY_A && HID_key <= HID_KEY_Z)
-    return HID_key + 'A' - HID_KEY_A;
-}
+
 
 // Função para mapear valores do ADC para deslocamento do cursor
 int8_t adc_to_mouse_movement(uint16_t adc_value) {
