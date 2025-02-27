@@ -33,7 +33,7 @@ O joystick envia os comandos das setas direcionais do teclado, de acordo com o m
 
 ## Vídeo de Demonstração
 ```bash
-   Link: https://youtu.be/raUq55tBR60
+   Link: https://youtu.be/lGi4LflUJlo
 ```
 
 ## Licença
